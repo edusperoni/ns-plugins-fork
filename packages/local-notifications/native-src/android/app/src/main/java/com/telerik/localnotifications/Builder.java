@@ -8,6 +8,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import androidx.annotation.Nullable;
@@ -17,6 +18,7 @@ import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -45,7 +47,12 @@ public final class Builder {
 
     static Notification build(JSONObject options, Context context, int notificationID) {
         // We use options.channel as both channel id and name. If not set, both default to DEFAULT_CHANNEL:
-        return build(options, context, notificationID, options.optString("channel", DEFAULT_CHANNEL));
+        String channel = options.optString("channel", DEFAULT_CHANNEL);
+        if (android.os.Build.VERSION.SDK_INT >= 20) {
+                PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            channel = pm.isInteractive() ? channel : options.optString("backgroundChannel", channel);
+        }
+        return build(options, context, notificationID, channel);
     }
 
     static Notification build(JSONObject options, Context context, int notificationID, String channelID) {
@@ -77,11 +84,41 @@ public final class Builder {
 
         NotificationCompat.Builder builder = android.os.Build.VERSION.SDK_INT >= 26 ? new NotificationCompat.Builder(context, channelID) : new NotificationCompat.Builder(context);
 
+
+        String title = options.optString("title", null);
+			  String subtitle = options.optString("subtitle", null);
+				String body = options.optString("body", null);
+        if(options.has("sharedTextKey")) {
+					SharedPreferences nativeScriptPreferences = context.getSharedPreferences("prefs.db", Context.MODE_PRIVATE);
+					try {
+						String sharedKey = options.getString("sharedTextKey");
+						JSONObject textData = new JSONObject(nativeScriptPreferences.getString(sharedKey, "{}"));
+						int currentIndex = textData.optInt("currentIndex", 0);
+						if(textData.has("texts")) {
+							JSONArray texts = textData.getJSONArray("texts");
+							if(texts.length() > 0) {
+								JSONObject currentText = texts.getJSONObject(currentIndex % texts.length());
+								title = currentText.optString("title", title);
+								subtitle = currentText.optString("subtitle", subtitle);
+								body = currentText.optString("body", body);
+								textData.put("currentIndex", (currentIndex + 1) % texts.length());
+								SharedPreferences.Editor editor = nativeScriptPreferences.edit();
+								editor.putString(sharedKey, textData.toString());
+								editor.apply();
+							}
+						}
+					} catch (JSONException e) {
+						e.printStackTrace();
+					}
+				}
+
+        options.optJSONArray("texts");
+
         builder
             .setDefaults(0)
-            .setContentTitle(options.optString("title", null))
-            .setSubText(options.optString("subtitle", null))
-            .setContentText(options.optString("body", null))
+            .setContentTitle(title)
+            .setSubText(subtitle)
+            .setContentText(body)
             .setSmallIcon(options.optInt("icon"))
             .setAutoCancel(true) // Remove the notification from the status bar once tapped.
             .setNumber(options.optInt("badge"))
@@ -91,6 +128,10 @@ public final class Builder {
             .setTicker(options.optString("ticker", null)); // Let the OS handle the default value for the ticker.
 
 				String soundFileName = options.optString("sound", null);
+				if (android.os.Build.VERSION.SDK_INT >= 20) {
+					PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+					soundFileName = pm.isInteractive() ? soundFileName : options.optString("backgroundSound", soundFileName);
+				}
 				if(soundFileName != null && !soundFileName.equals("default")){
 					int soundIdentifier = context.getResources().getIdentifier(options.optString("sound"), "raw", context.getApplicationInfo().packageName);
 					builder.setSound(Uri.parse("android.resource://" + context.getApplicationInfo().packageName + soundIdentifier));
