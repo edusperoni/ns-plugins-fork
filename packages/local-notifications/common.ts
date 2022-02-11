@@ -41,6 +41,7 @@ export interface ScheduleOptions {
 	 * Default not set.
 	 */
 	title?: string;
+	sharedTextKey?: string;
 
 	/**
 	 * Shown below the title on iOS >= 10, and next to the App name on Android.
@@ -82,6 +83,11 @@ export interface ScheduleOptions {
 	 * Default 'the default notification sound'.
 	 */
 	sound?: string;
+
+	/**
+	 * sound for when screen is off
+	 */
+	backgroundSound?: string;
 
 	/**
 	 * Custom color for the notification icon and title that will be applied when the notification center is expanded.
@@ -175,6 +181,11 @@ export interface ScheduleOptions {
 	 * Default 'Channel'.
 	 */
 	channel?: string;
+
+	/**
+	 * Channel for when screen is off
+	 */
+	backgroundChannel?: string;
 
 	/**
 	 * Default false.
