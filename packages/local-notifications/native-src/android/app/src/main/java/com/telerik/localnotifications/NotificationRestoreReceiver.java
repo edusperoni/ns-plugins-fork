@@ -21,64 +21,64 @@ import org.json.JSONObject;
  */
 public class NotificationRestoreReceiver extends BroadcastReceiver {
 
-  private static final String TAG = "NotifyRestoreReceiver";
+	private static final String TAG = "NotifyRestoreReceiver";
 
-  @Override
-  public void onReceive(Context context, Intent intent) {
-    if (context == null || !Intent.ACTION_BOOT_COMPLETED.equalsIgnoreCase(intent.getAction())) {
-      return;
-    }
+	@Override
+	public void onReceive(Context context, Intent intent) {
+		if (context == null || !Intent.ACTION_BOOT_COMPLETED.equalsIgnoreCase(intent.getAction())) {
+			return;
+		}
 
-    try {
-      for (Map.Entry<String, String> entry : Store.getAll(context).entrySet()) {
-        final String notificationString = entry.getValue();
+		try {
+			for (Map.Entry<String, String> entry : Store.getAll(context).entrySet()) {
+				final String notificationString = entry.getValue();
 
-        Log.e(TAG, "Will restore previously scheduled notification: " + notificationString);
+				Log.e(TAG, "Will restore previously scheduled notification: " + notificationString);
 
-        scheduleNotification(new JSONObject(notificationString), context);
-      }
-    } catch (IllegalStateException | JSONException e) {
-      Log.e(TAG, "Notification could not be scheduled! " + e.getMessage(), e);
-    }
-  }
+				scheduleNotification(new JSONObject(notificationString), context);
+			}
+		} catch (IllegalStateException | JSONException e) {
+			Log.e(TAG, "Notification could not be scheduled! " + e.getMessage(), e);
+		}
+	}
 
-  static void scheduleNotification(JSONObject options, Context context) {
+	static void scheduleNotification(JSONObject options, Context context) {
 
-    // We might create the notification IMMEDIATELY:
+		// We might create the notification IMMEDIATELY:
 
-    // If no ID is provided, we automatically assign different IDs so that all notifications are persisted:
-    final int notificationID = options.optInt("id", 0);
-    final long triggerTime = options.optLong("atTime", 0);
+		// If no ID is provided, we automatically assign different IDs so that all notifications are persisted:
+		final int notificationID = options.optInt("id", 0);
+		final long triggerTime = options.optLong("atTime", 0);
 
-    if (triggerTime == 0) {
-      // If we just want to show the notification immediately, there's no need to create an Intent,
-      // we just send the notification to the Notification Service:
-      ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE)).notify(
-          notificationID, com.telerik.localnotifications.Builder.build(options, context, notificationID)
-      );
+		if (triggerTime == 0) {
+			// If we just want to show the notification immediately, there's no need to create an Intent,
+			// we just send the notification to the Notification Service:
+			((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE)).notify(
+				notificationID, com.telerik.localnotifications.Builder.build(options, context, notificationID)
+			);
 
-      return;
-    }
+			return;
+		}
 
-    // Check if the notification has EXPIRED:
+		// Check if the notification has EXPIRED:
 
-    final long interval = options.optLong("repeatInterval", 0); // in ms
-    final Date triggerDate = new Date(triggerTime);
+		final long interval = options.optLong("repeatInterval", 0); // in ms
+		final Date triggerDate = new Date(triggerTime);
 
-    if (interval == 0 && new Date().after(triggerDate)) {
-      Store.remove(context, notificationID);
+		if (interval == 0 && new Date().after(triggerDate)) {
+			Store.remove(context, notificationID);
 
-      return;
-    }
+			return;
+		}
 
-    // Or SCHEDULE it for later:
+		// Or SCHEDULE it for later:
 
-    final AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+		final AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
-    try {
-      final Intent notificationIntent = new Intent(context, NotificationAlarmReceiver.class)
-          .setAction(options.getString("id"))
-          .putExtra(Builder.NOTIFICATION_ID, notificationID);
+		try {
+			final Intent notificationIntent = new Intent(context, NotificationAlarmReceiver.class)
+				.setAction(options.getString("id"))
+				.putExtra(Builder.NOTIFICATION_ID, notificationID);
 
       final PendingIntent pendingIntent = PendingIntent.getBroadcast(
       	context,
@@ -87,13 +87,29 @@ public class NotificationRestoreReceiver extends BroadcastReceiver {
 				Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_CANCEL_CURRENT
 			);
 
-      if (interval > 0) {
-        alarmManager.setRepeating(AlarmManager.RTC_WAKEUP, triggerTime, interval, pendingIntent);
-      } else {
-        alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
-      }
-    } catch (Exception e) {
-      Log.e(TAG, "Notification could not be scheduled!" + e.getMessage(), e);
-    }
-  }
+			if (interval > 0) {
+				if (android.os.Build.VERSION.SDK_INT >= 21) {
+					long timeDiff = new Date().getTime() - triggerTime;
+					long targetTime = triggerTime;
+					if (timeDiff > 0) { // triggerTime is in the past
+						long amountOfTriggers = timeDiff / interval;
+						targetTime = triggerTime + ((amountOfTriggers + 1) * interval);
+					}
+					if (android.os.Build.VERSION.SDK_INT >= 23)
+						alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetTime, pendingIntent);
+					else alarmManager.setExact(AlarmManager.RTC_WAKEUP, targetTime, pendingIntent);
+				} else {
+					alarmManager.setRepeating(AlarmManager.RTC_WAKEUP, triggerTime, interval, pendingIntent);
+				}
+			} else {
+				if (android.os.Build.VERSION.SDK_INT >= 23)
+					alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+				else if (android.os.Build.VERSION.SDK_INT >= 21)
+					alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+				else alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+			}
+		} catch (Exception e) {
+			Log.e(TAG, "Notification could not be scheduled!" + e.getMessage(), e);
+		}
+	}
 }
