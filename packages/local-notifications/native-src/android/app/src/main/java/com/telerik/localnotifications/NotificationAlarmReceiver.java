@@ -28,6 +28,9 @@ public class NotificationAlarmReceiver extends BroadcastReceiver {
       ((NotificationManager) context
         .getSystemService(Context.NOTIFICATION_SERVICE))
         .notify(id, Builder.build(opts, context, id));
+      if (android.os.Build.VERSION.SDK_INT >= 21 && opts.optLong("repeatInterval", 0) > 0) {
+				NotificationRestoreReceiver.scheduleNotification(opts, context);
+			}
     } catch (Throwable t) {
       Log.e(TAG, "Notification could not be restored!" + t.getMessage(), t);
     }
