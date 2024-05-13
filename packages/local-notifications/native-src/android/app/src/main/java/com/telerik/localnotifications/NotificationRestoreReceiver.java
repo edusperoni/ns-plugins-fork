@@ -6,6 +6,7 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.util.Log;
 
 import java.util.Date;
@@ -75,6 +76,10 @@ public class NotificationRestoreReceiver extends BroadcastReceiver {
 		final AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
 		try {
+			boolean canScheduleExact = true;
+			if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+				canScheduleExact = alarmManager.canScheduleExactAlarms();
+			}
 			final Intent notificationIntent = new Intent(context, NotificationAlarmReceiver.class)
 				.setAction(options.getString("id"))
 				.putExtra(Builder.NOTIFICATION_ID, notificationID);
@@ -82,7 +87,7 @@ public class NotificationRestoreReceiver extends BroadcastReceiver {
 			final PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, notificationIntent, PendingIntent.FLAG_CANCEL_CURRENT);
 
 			if (interval > 0) {
-				if (android.os.Build.VERSION.SDK_INT >= 21) {
+				if (canScheduleExact && android.os.Build.VERSION.SDK_INT >= 21) {
 					long timeDiff = new Date().getTime() - triggerTime;
 					long targetTime = triggerTime;
 					if (timeDiff > 0) { // triggerTime is in the past
@@ -96,11 +101,12 @@ public class NotificationRestoreReceiver extends BroadcastReceiver {
 					alarmManager.setRepeating(AlarmManager.RTC_WAKEUP, triggerTime, interval, pendingIntent);
 				}
 			} else {
-				if (android.os.Build.VERSION.SDK_INT >= 23)
-					alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
-				else if (android.os.Build.VERSION.SDK_INT >= 21)
-					alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
-				else alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+				if (canScheduleExact && android.os.Build.VERSION.SDK_INT >= 21) {
+					if (android.os.Build.VERSION.SDK_INT >= 23)
+						alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+					else
+						alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
+				} else alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);
 			}
 		} catch (Exception e) {
 			Log.e(TAG, "Notification could not be scheduled!" + e.getMessage(), e);
